@@ -25,7 +25,7 @@ export const handler = async (event) => {
   }
 
   const params = event.queryStringParameters || {}
-  const country = params.country || 'in'
+  const country = params.country || 'us'
   const category = params.category
 
   const upstream = new URLSearchParams({ country, apiKey: key })

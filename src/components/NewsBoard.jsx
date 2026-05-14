@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react'
 import NewsItem from './NewsItem'
 import { CATEGORIES } from '../constants/categories'
 import { articleKey } from '../utils/articleKey'
-import { regionLabelForCountry } from '../utils/newsUrl'
-
-/** NewsData.io uses different slugs than NewsAPI; "top" is the closest to general headlines. */
-function newsDataCategory(category) {
-  if (category === 'general') return 'top'
-  return category
-}
+import {
+  buildHeadlinesUrl,
+  NEWS_COUNTRY,
+  regionLabelForCountry,
+  shouldUseNewsProxy,
+} from '../utils/newsUrl'
 
 function SkeletonCard() {
   return (
@@ -50,36 +49,31 @@ const NewsBoard = ({ category }) => {
   const [error, setError] = useState(null)
 
   const apiKey = import.meta.env.VITE_API_KEY
+  const useProxy = shouldUseNewsProxy()
   const categoryLabel =
     CATEGORIES.find((c) => c.id === category)?.label ?? 'News'
 
-  const regionLabel = regionLabelForCountry('in')
+  const regionLabel = regionLabelForCountry(NEWS_COUNTRY)
 
   useEffect(() => {
-    if (!apiKey) return undefined
+    const url = buildHeadlinesUrl(category, apiKey)
+    if (!url) return undefined
 
     let cancelled = false
-    const cat = encodeURIComponent(newsDataCategory(category))
-    const url = `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(apiKey)}&country=in&category=${cat}&language=en`
 
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return
-        if (data.status === 'error' || data.status === 'failure') {
+        if (data.status === 'error') {
           setError(data.message || 'Could not load headlines.')
           setArticles([])
           setStatus('error')
           return
         }
-        const results = data.results
-        if (!Array.isArray(results)) {
-          setError(data.message || 'Unexpected response from NewsData.io.')
-          setArticles([])
-          setStatus('error')
-          return
-        }
-        setArticles(results)
+        const raw = Array.isArray(data.articles) ? data.articles : []
+        const list = raw.filter((item) => item && item.title)
+        setArticles(list)
         setStatus('success')
       })
       .catch(() => {
@@ -92,7 +86,7 @@ const NewsBoard = ({ category }) => {
     return () => {
       cancelled = true
     }
-  }, [category, apiKey])
+  }, [category, apiKey, useProxy])
 
   const [featured, ...rest] = articles
 
@@ -108,7 +102,7 @@ const NewsBoard = ({ category }) => {
     </header>
   )
 
-  if (!apiKey) {
+  if (!useProxy && !apiKey) {
     return (
       <div className="space-y-10">
         {header}
@@ -117,12 +111,12 @@ const NewsBoard = ({ category }) => {
           role="alert"
         >
           <p className="font-medium text-amber-100">
-            Add{' '}
+            For local development, add{' '}
             <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">VITE_API_KEY</code> to your{' '}
-            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">.env</code> file (NewsData.io
-            key) and restart the dev server. For Netlify, set{' '}
-            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">VITE_API_KEY</code> under
-            Environment variables and redeploy.
+            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">.env</code> file and restart the dev
+            server. On Netlify, set{' '}
+            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">NEWS_API_KEY</code> (same NewsAPI key)
+            for the serverless proxy.
           </p>
         </div>
       </div>
@@ -150,10 +144,18 @@ const NewsBoard = ({ category }) => {
           role="alert"
         >
           <p className="font-medium text-red-200">{error}</p>
-          <p className="mt-2 text-sm text-red-300/80">
-            Confirm your NewsData.io key and plan limits. If the API returns an error message above, adjust
-            your request or category.
-          </p>
+          {useProxy ? (
+            <p className="mt-2 text-sm text-red-300/80">
+              On Netlify, add <code className="rounded bg-black/20 px-1">NEWS_API_KEY</code> under Environment
+              variables (not only <code className="rounded bg-black/20 px-1">VITE_API_KEY</code>), then redeploy.
+              The proxy calls NewsAPI from the server so the Developer plan works on your live site.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-red-300/80">
+              NewsAPI may block non-localhost requests on the free Developer plan. Deploy to Netlify with{' '}
+              <code className="rounded bg-black/20 px-1">NEWS_API_KEY</code> set, or upgrade your NewsAPI plan.
+            </p>
+          )}
         </div>
       )}
 
@@ -171,9 +173,9 @@ const NewsBoard = ({ category }) => {
               variant="hero"
               title={featured.title}
               description={featured.description}
-              src={featured.image_url}
-              url={featured.link}
-              publishedAt={featured.pubDate ?? featured.publishedAt}
+              src={featured.urlToImage}
+              url={featured.url}
+              publishedAt={featured.publishedAt}
             />
           )}
           {rest.length > 0 && (
@@ -183,9 +185,9 @@ const NewsBoard = ({ category }) => {
                   key={articleKey(news)}
                   title={news.title}
                   description={news.description}
-                  src={news.image_url}
-                  url={news.link}
-                  publishedAt={news.pubDate ?? news.publishedAt}
+                  src={news.urlToImage}
+                  url={news.url}
+                  publishedAt={news.publishedAt}
                 />
               ))}
             </div>
