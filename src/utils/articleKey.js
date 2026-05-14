@@ -1,4 +1,6 @@
 export function articleKey(article) {
-  if (article?.url) return article.url
-  return `${article?.title ?? 'article'}-${article?.publishedAt ?? ''}`
+  const id = article?.link || article?.url
+  if (id) return id
+  const when = article?.pubDate || article?.publishedAt
+  return `${article?.title ?? 'article'}-${when ?? ''}`
 }
