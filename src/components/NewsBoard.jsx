@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import NewsItem from './NewsItem'
 import { CATEGORIES } from '../constants/categories'
 import { articleKey } from '../utils/articleKey'
+import {
+  buildHeadlinesUrl,
+  NEWS_COUNTRY,
+  regionLabelForCountry,
+  shouldUseNewsProxy,
+} from '../utils/newsUrl'
 
 function SkeletonCard() {
   return (
@@ -43,15 +49,17 @@ const NewsBoard = ({ category }) => {
   const [error, setError] = useState(null)
 
   const apiKey = import.meta.env.VITE_API_KEY
+  const useProxy = shouldUseNewsProxy()
   const categoryLabel =
     CATEGORIES.find((c) => c.id === category)?.label ?? 'News'
 
+  const regionLabel = regionLabelForCountry(NEWS_COUNTRY)
+
   useEffect(() => {
-    if (!apiKey) return undefined
+    const url = buildHeadlinesUrl(category, apiKey)
+    if (!url) return undefined
 
     let cancelled = false
-
-    const url = `https://newsapi.org/v2/top-headlines?country=us&category=${encodeURIComponent(category,)}&apiKey=${apiKey}`
 
     fetch(url)
       .then((res) => res.json())
@@ -76,14 +84,14 @@ const NewsBoard = ({ category }) => {
     return () => {
       cancelled = true
     }
-  }, [category, apiKey])
+  }, [category, apiKey, useProxy])
 
   const [featured, ...rest] = articles
 
   const header = (
     <header className="space-y-2 text-center md:text-left">
       <p className="text-sm font-medium uppercase tracking-widest text-amber-500/90">
-        United States
+        {regionLabel}
       </p>
       <h1 className="font-serif text-3xl font-semibold tracking-tight text-white sm:text-4xl">
         {categoryLabel}
@@ -92,7 +100,7 @@ const NewsBoard = ({ category }) => {
     </header>
   )
 
-  if (!apiKey) {
+  if (!useProxy && !apiKey) {
     return (
       <div className="space-y-10">
         {header}
@@ -101,9 +109,12 @@ const NewsBoard = ({ category }) => {
           role="alert"
         >
           <p className="font-medium text-amber-100">
-            Add <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">VITE_API_KEY</code> to
-            your <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">.env</code> file
-            (NewsAPI key) and restart the dev server.
+            For local development, add{' '}
+            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">VITE_API_KEY</code> to your{' '}
+            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">.env</code> file and restart the dev
+            server. On Netlify, set{' '}
+            <code className="rounded bg-black/30 px-1.5 py-0.5 text-amber-200">NEWS_API_KEY</code> (same NewsAPI key)
+            for the serverless proxy.
           </p>
         </div>
       </div>
@@ -131,15 +142,24 @@ const NewsBoard = ({ category }) => {
           role="alert"
         >
           <p className="font-medium text-red-200">{error}</p>
-          <p className="mt-2 text-sm text-red-300/80">
-            If you are on the free NewsAPI developer plan, requests only work from localhost.
-          </p>
+          {useProxy ? (
+            <p className="mt-2 text-sm text-red-300/80">
+              On Netlify, add <code className="rounded bg-black/20 px-1">NEWS_API_KEY</code> under Environment
+              variables (not only <code className="rounded bg-black/20 px-1">VITE_API_KEY</code>), then redeploy.
+              The proxy calls NewsAPI from the server so the Developer plan works on your live site.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-red-300/80">
+              NewsAPI may block non-localhost requests on the free Developer plan. Deploy to Netlify with{' '}
+              <code className="rounded bg-black/20 px-1">NEWS_API_KEY</code> set, or upgrade your NewsAPI plan.
+            </p>
+          )}
         </div>
       )}
 
       {status === 'success' && articles.length === 0 && (
         <p className="rounded-2xl border border-white/10 bg-zinc-900/40 px-6 py-12 text-center text-zinc-400">
-          No stories in this category right now. Try another topic.
+          No stories returned for this selection. Try another category.
         </p>
       )}
 
